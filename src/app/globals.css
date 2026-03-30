@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --brand-color: #111827;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+input, select, textarea {
+  font-size: 16px; /* prevent iOS zoom */
+}
+
+@layer utilities {
+  .brand-bg {
+    background-color: var(--brand-color);
+  }
+  .brand-text {
+    color: var(--brand-color);
+  }
+  .brand-border {
+    border-color: var(--brand-color);
+  }
+}
