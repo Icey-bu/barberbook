@@ -3,14 +3,6 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import type { Barber } from '@/types';
 
-async function signOut() {
-  'use server';
-  const { createClient: create } = await import('@/lib/supabase/server');
-  const supabase = await create();
-  await supabase.auth.signOut();
-  redirect('/barber/login');
-}
-
 export default async function BarberLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -32,7 +24,6 @@ export default async function BarberLayout({ children }: { children: React.React
       {/* Sidebar */}
       <div className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col">
         <div className="flex flex-col flex-1 bg-gray-900 overflow-y-auto">
-          {/* Logo */}
           <div className="flex items-center gap-3 px-6 py-5 border-b border-gray-800">
             <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-sm">BB</span>
@@ -40,7 +31,6 @@ export default async function BarberLayout({ children }: { children: React.React
             <span className="text-white font-semibold">BarberBook</span>
           </div>
 
-          {/* Barber info */}
           {barber && (
             <div className="px-4 py-4 border-b border-gray-800">
               <div className="flex items-center gap-3">
@@ -62,13 +52,12 @@ export default async function BarberLayout({ children }: { children: React.React
             </div>
           )}
 
-          {/* Navigation */}
           <nav className="flex-1 px-3 py-4 space-y-1">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-colors text-sm font-medium group"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-colors text-sm font-medium"
               >
                 <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d={link.icon} />
@@ -78,7 +67,6 @@ export default async function BarberLayout({ children }: { children: React.React
             ))}
           </nav>
 
-          {/* Sign out */}
           <div className="px-3 py-4 border-t border-gray-800">
             {barber && (
               <Link
@@ -92,14 +80,16 @@ export default async function BarberLayout({ children }: { children: React.React
                 View Public Page
               </Link>
             )}
-            <form action={signOut}>
-              <button type="submit" className="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors text-sm">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
-                Sign Out
-              </button>
-            </form>
+            {/* Sign out as a plain link to avoid Server Action issues */}
+            <Link
+              href="/api/auth/signout"
+              className="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors text-sm"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Sign Out
+            </Link>
           </div>
         </div>
       </div>
@@ -118,7 +108,6 @@ export default async function BarberLayout({ children }: { children: React.React
         </div>
       </nav>
 
-      {/* Main content */}
       <div className="lg:pl-64">
         <main className="max-w-5xl mx-auto px-4 py-6 pb-20 lg:pb-6">
           {children}

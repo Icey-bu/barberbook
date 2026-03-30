@@ -3,17 +3,18 @@ import type { AvailabilityRule, BlockedTime, TimeSlot } from '@/types';
 
 /**
  * Generate available time slots for a barber on a given date.
- * Subtracts blocked times and existing bookings from the weekly schedule.
- * The caller provides the right Supabase client (anon / barber JWT / service role).
+ * Slots are generated every 30 minutes but filtered so that:
+ * - The slot doesn't overlap any existing confirmed/booked appointment
+ * - The slot doesn't overlap any blocked time
+ * - There is enough room for the full service duration before the end of shift
  */
 export async function getAvailableSlots(
   supabase: SupabaseClient,
   barberId: string,
-  date: string,          // "YYYY-MM-DD"
+  date: string,           // "YYYY-MM-DD"
   durationMinutes: number
 ): Promise<TimeSlot[]> {
-  const targetDate = new Date(date + 'T00:00:00');
-  const dayOfWeek = targetDate.getDay(); // 0=Sun, 6=Sat
+  const dayOfWeek = new Date(date + 'T12:00:00').getDay(); // use noon to avoid DST edge cases
 
   // 1. Get availability rules for this day
   const { data: rules } = await supabase
@@ -34,23 +35,22 @@ export async function getAvailableSlots(
     .eq('date', date)
     .returns<BlockedTime[]>();
 
-  // Check if entire day is blocked
-  const fullDayBlocked = blocked?.some((b) => b.start_time === null);
-  if (fullDayBlocked) return [];
+  // Full day block?
+  if (blocked?.some((b) => b.start_time === null)) return [];
 
-  // 3. Get existing bookings for this date (non-cancelled)
+  // 3. Get ALL active bookings for this barber on this date
   const { data: existingBookings } = await supabase
     .from('bookings')
-    .select('start_time, end_time')
+    .select('start_time, end_time, status')
     .eq('barber_id', barberId)
     .eq('booking_date', date)
     .not('status', 'in', '("cancelled","no_show")');
 
-  // 4. Build list of busy intervals (blocked + booked)
-  type Interval = { start: number; end: number }; // minutes from midnight
+  // 4. Build busy intervals in minutes-from-midnight
+  type Interval = { start: number; end: number };
   const busyIntervals: Interval[] = [];
 
-  // Blocked time windows
+  // Blocked windows
   for (const b of blocked ?? []) {
     if (b.start_time && b.end_time) {
       busyIntervals.push({
@@ -60,7 +60,7 @@ export async function getAvailableSlots(
     }
   }
 
-  // Existing bookings
+  // Existing bookings — each booking blocks start_time → end_time
   for (const booking of existingBookings ?? []) {
     busyIntervals.push({
       start: timeToMinutes(booking.start_time),
@@ -68,30 +68,51 @@ export async function getAvailableSlots(
     });
   }
 
-  // 5. Generate slots from availability rules
+  // 5. Don't show slots in the past (for today)
+  const now = new Date();
+  const todayStr = now.toISOString().split('T')[0];
+  const currentMinutes = date === todayStr
+    ? now.getHours() * 60 + now.getMinutes() + 60 // add 1hr buffer
+    : 0;
+
+  // 6. Generate slots — offer every 30min increment within each rule window
+  const SLOT_INTERVAL = 30;
   const slots: TimeSlot[] = [];
-  const slotIntervalMinutes = 30; // slots every 30 mins
 
   for (const rule of rules) {
     const ruleStart = timeToMinutes(rule.start_time);
     const ruleEnd = timeToMinutes(rule.end_time);
 
     let current = ruleStart;
+
+    // Snap to next clean 30-min mark if rule starts at an odd time
+    while (current % SLOT_INTERVAL !== 0) current++;
+
     while (current + durationMinutes <= ruleEnd) {
       const slotEnd = current + durationMinutes;
 
-      // Check if this slot overlaps with any busy interval
+      // Skip past slots
+      if (current < currentMinutes) {
+        current += SLOT_INTERVAL;
+        continue;
+      }
+
+      // Check overlap with any busy interval
+      // A slot [current, slotEnd] overlaps [busyStart, busyEnd] if:
+      //   current < busyEnd AND slotEnd > busyStart
       const isBusy = busyIntervals.some(
         (busy) => current < busy.end && slotEnd > busy.start
       );
 
       if (!isBusy) {
-        const startISO = `${date}T${minutesToTime(current)}`;
-        const endISO = `${date}T${minutesToTime(slotEnd)}`;
-        slots.push({ startTime: startISO, endTime: endISO, available: true });
+        slots.push({
+          startTime: `${date}T${minutesToTimeStr(current)}`,
+          endTime: `${date}T${minutesToTimeStr(slotEnd)}`,
+          available: true,
+        });
       }
 
-      current += slotIntervalMinutes;
+      current += SLOT_INTERVAL;
     }
   }
 
@@ -99,67 +120,47 @@ export async function getAvailableSlots(
 }
 
 /**
- * Check if a specific time slot is available for a barber.
+ * Check if a specific slot is still available (used before creating a booking).
  */
 export async function isSlotAvailable(
   supabase: SupabaseClient,
   barberId: string,
-  startTime: string,  // ISO datetime
+  startTime: string,      // ISO datetime e.g. "2026-04-01T09:00:00"
   durationMinutes: number,
   excludeBookingId?: string
 ): Promise<boolean> {
   const date = startTime.split('T')[0];
-  const slots = await getAvailableSlots(supabase, barberId, date, durationMinutes);
+  const startMin = timeToMinutes(startTime.split('T')[1]);
+  const endMin = startMin + durationMinutes;
+
+  let query = supabase
+    .from('bookings')
+    .select('id')
+    .eq('barber_id', barberId)
+    .eq('booking_date', date)
+    .not('status', 'in', '("cancelled","no_show")')
+    .lt('start_time', minutesToTimeStr(endMin))   // existing.start < newEnd
+    .gt('end_time', minutesToTimeStr(startMin));   // existing.end > newStart
 
   if (excludeBookingId) {
-    // For reschedule: temporarily consider the slot available by ignoring the current booking
-    // We re-check availability after removing the excluded booking
-    const { data: existingBookings } = await supabase
-      .from('bookings')
-      .select('start_time, end_time')
-      .eq('barber_id', barberId)
-      .eq('booking_date', date)
-      .not('status', 'in', '("cancelled","no_show")')
-      .neq('id', excludeBookingId);
-    // This is a simplified check; the full logic is handled by the conflict trigger
+    query = query.neq('id', excludeBookingId);
   }
 
-  return slots.some((s) => s.startTime === startTime);
-}
-
-/**
- * Get all available dates for a barber within a date range (for calendar display).
- */
-export async function getAvailableDates(
-  supabase: SupabaseClient,
-  barberId: string,
-  fromDate: string,
-  toDate: string,
-  durationMinutes: number
-): Promise<string[]> {
-  const availableDates: string[] = [];
-  const start = new Date(fromDate);
-  const end = new Date(toDate);
-
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const dateStr = d.toISOString().split('T')[0];
-    const slots = await getAvailableSlots(supabase, barberId, dateStr, durationMinutes);
-    if (slots.length > 0) {
-      availableDates.push(dateStr);
-    }
-  }
-
-  return availableDates;
+  const { data, error } = await query;
+  if (error) return false;
+  return data.length === 0; // available if no conflicts
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function timeToMinutes(time: string): number {
-  const parts = time.split(':');
+  // Handles "HH:MM", "HH:MM:SS", and "YYYY-MM-DDTHH:MM:SS"
+  const t = time.includes('T') ? time.split('T')[1] : time;
+  const parts = t.split(':');
   return parseInt(parts[0]) * 60 + parseInt(parts[1]);
 }
 
-function minutesToTime(minutes: number): string {
+function minutesToTimeStr(minutes: number): string {
   const h = Math.floor(minutes / 60).toString().padStart(2, '0');
   const m = (minutes % 60).toString().padStart(2, '0');
   return `${h}:${m}:00`;
