@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
-import { redirect } from 'next/navigation';
 import type { Barber } from '@/types';
 
 export default async function BarberLayout({ children }: { children: React.ReactNode }) {
@@ -10,6 +9,8 @@ export default async function BarberLayout({ children }: { children: React.React
   const { data: barber } = user
     ? await supabase.from('barbers').select('id, name, slug, avatar_url, brand_color').eq('user_id', user.id).single<Barber>()
     : { data: null };
+
+  const brandColor = barber?.brand_color ?? '#111827';
 
   const navLinks = [
     { href: '/barber/dashboard', label: 'Dashboard', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
@@ -21,45 +22,57 @@ export default async function BarberLayout({ children }: { children: React.React
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Sidebar */}
+      {/* ── Desktop Sidebar ─────────────────────────── */}
       <div className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col">
-        <div className="flex flex-col flex-1 bg-gray-900 overflow-y-auto">
-          <div className="flex items-center gap-3 px-6 py-5 border-b border-gray-800">
-            <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">BB</span>
+        <div
+          className="flex flex-col flex-1 overflow-y-auto"
+          style={{
+            background: 'linear-gradient(180deg, #0d0f1a 0%, #111320 100%)',
+            borderRight: '1px solid rgba(255,255,255,0.06)',
+          }}
+        >
+          {/* Logo */}
+          <div className="flex items-center gap-3 px-6 py-5 border-b border-white/[0.06]">
+            <div
+              className="w-8 h-8 rounded-xl flex items-center justify-center shadow-brand"
+              style={{ background: `linear-gradient(135deg, ${brandColor}, ${brandColor}aa)` }}
+            >
+              <span className="text-white font-bold text-sm">B</span>
             </div>
-            <span className="text-white font-semibold">BarberBook</span>
+            <span className="text-white font-semibold tracking-tight">BarberBook</span>
           </div>
 
+          {/* Barber profile */}
           {barber && (
-            <div className="px-4 py-4 border-b border-gray-800">
+            <div className="px-4 py-4 border-b border-white/[0.06]">
               <div className="flex items-center gap-3">
                 {barber.avatar_url ? (
-                  <img src={barber.avatar_url} alt={barber.name} className="w-9 h-9 rounded-full object-cover" />
+                  <img src={barber.avatar_url} alt={barber.name} className="w-10 h-10 rounded-full object-cover ring-2 ring-white/10" />
                 ) : (
                   <div
-                    className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold"
-                    style={{ backgroundColor: barber.brand_color ?? '#4b5563' }}
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold"
+                    style={{ background: `linear-gradient(135deg, ${brandColor}, ${brandColor}99)` }}
                   >
                     {barber.name.charAt(0)}
                   </div>
                 )}
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-white truncate">{barber.name}</p>
-                  <p className="text-xs text-gray-400 truncate">/b/{barber.slug}</p>
+                  <p className="text-sm font-semibold text-white truncate">{barber.name}</p>
+                  <p className="text-xs text-gray-500 truncate">/b/{barber.slug}</p>
                 </div>
               </div>
             </div>
           )}
 
-          <nav className="flex-1 px-3 py-4 space-y-1">
+          {/* Nav */}
+          <nav className="flex-1 px-3 py-4 space-y-0.5">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-colors text-sm font-medium"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-white/[0.07] transition-all text-sm font-medium group"
               >
-                <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <svg className="w-4.5 h-4.5 flex-shrink-0 w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d={link.icon} />
                 </svg>
                 {link.label}
@@ -67,12 +80,13 @@ export default async function BarberLayout({ children }: { children: React.React
             ))}
           </nav>
 
-          <div className="px-3 py-4 border-t border-gray-800">
+          {/* Footer actions */}
+          <div className="px-3 py-4 border-t border-white/[0.06] space-y-0.5">
             {barber && (
               <Link
                 href={`/b/${barber.slug}`}
                 target="_blank"
-                className="flex items-center gap-2 px-3 py-2 text-xs text-gray-400 hover:text-gray-300 mb-2"
+                className="flex items-center gap-2.5 px-3 py-2 text-xs text-gray-500 hover:text-gray-300 rounded-xl hover:bg-white/[0.06] transition-all"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -80,12 +94,11 @@ export default async function BarberLayout({ children }: { children: React.React
                 View Public Page
               </Link>
             )}
-            {/* Sign out as a plain link to avoid Server Action issues */}
             <Link
               href="/api/auth/signout"
-              className="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors text-sm"
+              className="flex items-center gap-2.5 px-3 py-2.5 w-full rounded-xl text-gray-500 hover:text-white hover:bg-white/[0.07] transition-all text-sm"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
               </svg>
               Sign Out
@@ -94,22 +107,34 @@ export default async function BarberLayout({ children }: { children: React.React
         </div>
       </div>
 
-      {/* Mobile bottom nav */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50">
-        <div className="flex items-center justify-around px-2 py-2">
-          {navLinks.slice(0, 4).map((link) => (
-            <Link key={link.href} href={link.href} className="flex flex-col items-center gap-1 p-2 text-gray-500 hover:text-gray-900 min-w-0">
+      {/* ── Mobile bottom nav ───────────────────────── */}
+      <nav
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-50 border-t"
+        style={{
+          background: 'rgba(13,15,26,0.95)',
+          backdropFilter: 'blur(20px)',
+          borderColor: 'rgba(255,255,255,0.08)',
+        }}
+      >
+        <div className="flex items-center justify-around px-2 py-2 safe-area-inset-bottom">
+          {navLinks.slice(0, 5).map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className="flex flex-col items-center gap-0.5 p-2 text-gray-500 hover:text-white transition-colors min-w-0"
+            >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d={link.icon} />
               </svg>
-              <span className="text-[10px] font-medium truncate">{link.label}</span>
+              <span className="text-[9px] font-medium truncate">{link.label}</span>
             </Link>
           ))}
         </div>
       </nav>
 
+      {/* ── Main content ────────────────────────────── */}
       <div className="lg:pl-64">
-        <main className="max-w-5xl mx-auto px-4 py-6 pb-20 lg:pb-6">
+        <main className="pb-24 lg:pb-8">
           {children}
         </main>
       </div>

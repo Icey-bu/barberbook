@@ -6,6 +6,7 @@ import { z } from 'zod';
 import BookingStepIndicator from '@/components/BookingStepIndicator';
 import ServiceCard from '@/components/ServiceCard';
 import TimeSlotPicker from '@/components/TimeSlotPicker';
+import BookingCalendar from '@/components/BookingCalendar';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import type { ServiceGroup, TimeSlot, Barber } from '@/types';
 
@@ -51,10 +52,7 @@ export default function BookPage() {
         setServices(json.data.services);
         if (preselectedServiceId) {
           const svc = json.data.services.find((s: ServiceGroup) => s.id === preselectedServiceId);
-          if (svc) {
-            setSelectedService(svc);
-            setStep(1);
-          }
+          if (svc) { setSelectedService(svc); setStep(1); }
         }
       } catch {
         router.push(`/b/${params.barberSlug}`);
@@ -65,7 +63,7 @@ export default function BookPage() {
     fetchProfile();
   }, [params.barberSlug, preselectedServiceId, router]);
 
-  // Fetch slots when date changes
+  // Fetch slots when date or service changes
   const fetchSlots = useCallback(async (date: string) => {
     if (!selectedService || !barber) return;
     setSlotsLoading(true);
@@ -85,14 +83,11 @@ export default function BookPage() {
   }, [selectedService, barber, params.barberSlug]);
 
   useEffect(() => {
-    if (selectedDate && step === 1) {
-      fetchSlots(selectedDate);
-    }
+    if (selectedDate && step === 1) fetchSlots(selectedDate);
   }, [selectedDate, fetchSlots, step]);
 
   const brandColor = barber?.brand_color ?? '#111827';
 
-  // Min and max date for date picker
   const today = new Date().toISOString().split('T')[0];
   const maxDate = new Date(Date.now() + (barber?.max_advance_days ?? 30) * 86400_000)
     .toISOString().split('T')[0];
@@ -125,19 +120,12 @@ export default function BookPage() {
           barberSlug: params.barberSlug,
           serviceId: selectedService.id,
           startTime: selectedSlot.startTime,
-          client: {
-            name: details.name,
-            email: details.email,
-            phone: details.phone || undefined,
-          },
+          client: { name: details.name, email: details.email, phone: details.phone || undefined },
           notes: details.notes || undefined,
         }),
       });
       const json = await res.json();
-      if (!res.ok) {
-        setSubmitError(json.message ?? 'Something went wrong. Please try again.');
-        return;
-      }
+      if (!res.ok) { setSubmitError(json.message ?? 'Something went wrong. Please try again.'); return; }
       if (json.status === 'deposit_required') {
         window.location.href = json.checkoutUrl;
       } else {
@@ -158,14 +146,21 @@ export default function BookPage() {
     );
   }
 
+  // ── Shared glass input class ────────────────────────────────
+  const inputCls = (hasError?: boolean) =>
+    `w-full glass-input rounded-xl px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 transition-all ${hasError ? 'border-red-300' : ''}`;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <BookingStepIndicator steps={STEPS} currentStep={step} brandColor={brandColor} />
 
-      {/* Step 0: Service Selection */}
+      {/* ── Step 0: Service Selection ───────────────────── */}
       {step === 0 && (
-        <div className="space-y-4">
-          <h2 className="text-xl font-bold text-gray-900">Choose a Service</h2>
+        <div className="space-y-4 slide-up">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-gray-900">Choose a Service</h2>
+            <span className="text-xs text-gray-400">{services.length} available</span>
+          </div>
           <div className="space-y-3">
             {services.map((svc) => (
               <ServiceCard
@@ -178,58 +173,77 @@ export default function BookPage() {
             ))}
           </div>
           {services.length === 0 && (
-            <p className="text-gray-500 text-sm text-center py-8">No services available.</p>
+            <div className="glass-card rounded-2xl p-12 text-center text-gray-400 text-sm">
+              No services available.
+            </div>
           )}
           <button
             onClick={() => selectedService && setStep(1)}
             disabled={!selectedService}
-            className="w-full py-3.5 rounded-xl font-semibold text-white transition-opacity disabled:opacity-40"
-            style={{ backgroundColor: brandColor }}
+            className="w-full py-3.5 rounded-2xl font-semibold text-white transition-all disabled:opacity-40 hover:opacity-90 active:scale-[0.99] shadow-brand"
+            style={{ background: `linear-gradient(135deg, ${brandColor}, ${brandColor}cc)` }}
           >
-            Continue
+            Continue →
           </button>
         </div>
       )}
 
-      {/* Step 1: Date & Time Selection */}
+      {/* ── Step 1: Date & Time ────────────────────────── */}
       {step === 1 && selectedService && (
-        <div className="space-y-5">
+        <div className="space-y-4 slide-up">
           <div className="flex items-center gap-3">
-            <button onClick={() => setStep(0)} className="text-gray-400 hover:text-gray-600">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <button
+              onClick={() => setStep(0)}
+              className="w-8 h-8 rounded-xl glass-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all"
+            >
+              <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
               </svg>
             </button>
             <h2 className="text-xl font-bold text-gray-900">Pick a Date & Time</h2>
           </div>
 
-          <div className="bg-white rounded-xl p-4 border border-gray-200 text-sm">
-            <span className="text-gray-500">Service: </span>
-            <span className="font-medium">{selectedService.name}</span>
-            <span className="text-gray-500"> · {selectedService.duration_minutes} min</span>
+          {/* Selected service summary */}
+          <div className="glass-card rounded-2xl px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm">
+              <span
+                className="w-2 h-2 rounded-full"
+                style={{ background: brandColor }}
+              />
+              <span className="font-medium text-gray-800">{selectedService.name}</span>
+              <span className="text-gray-400">·</span>
+              <span className="text-gray-500">{selectedService.duration_minutes} min</span>
+            </div>
+            <span className="font-semibold text-gray-900">${Number(selectedService.price).toFixed(0)}</span>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Select Date</label>
-            <input
-              type="date"
-              value={selectedDate}
-              min={today}
-              max={maxDate}
-              onChange={(e) => {
-                setSelectedDate(e.target.value);
-                setSelectedSlot(null);
-              }}
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:ring-2"
-              style={{ '--tw-ring-color': brandColor } as React.CSSProperties}
-            />
-          </div>
+          {/* Interactive Calendar */}
+          <BookingCalendar
+            barberSlug={params.barberSlug}
+            serviceId={selectedService.id}
+            minDate={today}
+            maxDate={maxDate}
+            selectedDate={selectedDate}
+            onDateSelect={(d) => { setSelectedDate(d); setSelectedSlot(null); }}
+            brandColor={brandColor}
+            barberId={barber?.id}
+          />
 
+          {/* Time Slots */}
           {selectedDate && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-3">Available Times</label>
+            <div className="slide-up">
+              <div className="flex items-center justify-between mb-3">
+                <label className="text-sm font-semibold text-gray-700">
+                  {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' })}
+                </label>
+                {slots.length > 0 && (
+                  <span className="text-xs text-gray-400">{slots.length} slots available</span>
+                )}
+              </div>
               {slotsLoading ? (
-                <LoadingSpinner size="sm" color={brandColor} />
+                <div className="glass-card rounded-2xl p-8 flex justify-center">
+                  <LoadingSpinner size="sm" color={brandColor} />
+                </div>
               ) : (
                 <TimeSlotPicker
                   slots={slots}
@@ -244,188 +258,188 @@ export default function BookPage() {
           <button
             onClick={() => selectedSlot && setStep(2)}
             disabled={!selectedSlot}
-            className="w-full py-3.5 rounded-xl font-semibold text-white transition-opacity disabled:opacity-40"
-            style={{ backgroundColor: brandColor }}
+            className="w-full py-3.5 rounded-2xl font-semibold text-white transition-all disabled:opacity-40 hover:opacity-90 active:scale-[0.99] shadow-brand"
+            style={{ background: `linear-gradient(135deg, ${brandColor}, ${brandColor}cc)` }}
           >
-            Continue
+            Continue →
           </button>
         </div>
       )}
 
-      {/* Step 2: Customer Details */}
+      {/* ── Step 2: Customer Details ───────────────────── */}
       {step === 2 && (
-        <div className="space-y-5">
+        <div className="space-y-4 slide-up">
           <div className="flex items-center gap-3">
-            <button onClick={() => setStep(1)} className="text-gray-400 hover:text-gray-600">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <button
+              onClick={() => setStep(1)}
+              className="w-8 h-8 rounded-xl glass-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all"
+            >
+              <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
               </svg>
             </button>
             <h2 className="text-xl font-bold text-gray-900">Your Details</h2>
           </div>
 
-          <div className="space-y-4">
+          <div className="glass-card rounded-2xl p-5 space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Full Name *</label>
               <input
                 type="text"
                 value={details.name}
                 onChange={(e) => setDetails({ ...details, name: e.target.value })}
                 placeholder="John Smith"
-                className={`w-full border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 ${errors.name ? 'border-red-300' : 'border-gray-200'}`}
+                className={inputCls(!!errors.name)}
                 style={{ '--tw-ring-color': brandColor } as React.CSSProperties}
               />
               {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Email *</label>
               <input
                 type="email"
                 value={details.email}
                 onChange={(e) => setDetails({ ...details, email: e.target.value })}
                 placeholder="john@example.com"
-                className={`w-full border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 ${errors.email ? 'border-red-300' : 'border-gray-200'}`}
+                className={inputCls(!!errors.email)}
                 style={{ '--tw-ring-color': brandColor } as React.CSSProperties}
               />
               {errors.email && <p className="mt-1 text-xs text-red-500">{errors.email}</p>}
-              <p className="mt-1 text-xs text-gray-400">Your confirmation will be sent here.</p>
+              <p className="mt-1 text-xs text-gray-400">Confirmation will be sent here.</p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Phone (optional)</label>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Phone <span className="font-normal text-gray-400 normal-case">(optional)</span></label>
               <input
                 type="tel"
                 value={details.phone}
                 onChange={(e) => setDetails({ ...details, phone: e.target.value })}
                 placeholder="+1 (613) 555-0100"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2"
+                className={inputCls()}
                 style={{ '--tw-ring-color': brandColor } as React.CSSProperties}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Notes for barber (optional)</label>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Notes for barber <span className="font-normal text-gray-400 normal-case">(optional)</span></label>
               <textarea
                 value={details.notes}
                 onChange={(e) => setDetails({ ...details, notes: e.target.value })}
                 placeholder="e.g. Fade on sides, keep length on top..."
                 rows={3}
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 resize-none"
+                className={`${inputCls()} resize-none`}
                 style={{ '--tw-ring-color': brandColor } as React.CSSProperties}
               />
             </div>
           </div>
 
           <button
-            onClick={() => {
-              if (validateDetails()) setStep(3);
-            }}
-            className="w-full py-3.5 rounded-xl font-semibold text-white"
-            style={{ backgroundColor: brandColor }}
+            onClick={() => { if (validateDetails()) setStep(3); }}
+            className="w-full py-3.5 rounded-2xl font-semibold text-white transition-all hover:opacity-90 active:scale-[0.99] shadow-brand"
+            style={{ background: `linear-gradient(135deg, ${brandColor}, ${brandColor}cc)` }}
           >
-            Review Booking
+            Review Booking →
           </button>
         </div>
       )}
 
-      {/* Step 3: Confirm */}
+      {/* ── Step 3: Confirm ────────────────────────────── */}
       {step === 3 && selectedService && selectedSlot && barber && (
-        <div className="space-y-5">
+        <div className="space-y-4 slide-up">
           <div className="flex items-center gap-3">
-            <button onClick={() => setStep(2)} className="text-gray-400 hover:text-gray-600">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <button
+              onClick={() => setStep(2)}
+              className="w-8 h-8 rounded-xl glass-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all"
+            >
+              <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
               </svg>
             </button>
             <h2 className="text-xl font-bold text-gray-900">Confirm Booking</h2>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-            <div className="p-4 border-b border-gray-100">
-              <h3 className="font-semibold text-gray-900 text-sm uppercase tracking-wide text-xs text-gray-500 mb-3">Appointment Summary</h3>
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Service</span>
-                  <span className="font-medium text-gray-900">{selectedService.name}</span>
+          {/* Appointment summary card */}
+          <div className="glass-card rounded-2xl overflow-hidden">
+            {/* Brand header */}
+            <div
+              className="px-5 py-3"
+              style={{ background: `linear-gradient(135deg, ${brandColor}20, ${brandColor}08)` }}
+            >
+              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: brandColor }}>
+                Appointment Summary
+              </p>
+            </div>
+
+            <div className="p-5 space-y-3 text-sm">
+              {[
+                { label: 'Service', value: selectedService.name },
+                { label: 'Date', value: new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' }) },
+                { label: 'Time', value: new Date(selectedSlot.startTime).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' }) },
+                { label: 'Duration', value: `${selectedService.duration_minutes} min` },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex justify-between items-center">
+                  <span className="text-gray-500">{label}</span>
+                  <span className="font-medium text-gray-900">{value}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Date</span>
-                  <span className="font-medium text-gray-900">
-                    {new Date(selectedDate).toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' })}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Time</span>
-                  <span className="font-medium text-gray-900">
-                    {new Date(selectedSlot.startTime).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' })}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Duration</span>
-                  <span className="font-medium text-gray-900">{selectedService.duration_minutes} min</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Total price</span>
-                  <span className="font-bold text-gray-900">${Number(selectedService.price).toFixed(2)}</span>
-                </div>
+              ))}
+              <div className="pt-2 border-t border-gray-100 flex justify-between items-center">
+                <span className="text-gray-500">Total</span>
+                <span className="font-bold text-xl text-gray-900">${Number(selectedService.price).toFixed(2)}</span>
               </div>
             </div>
 
-            <div className="p-4 border-b border-gray-100">
-              <h3 className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-3">Your Info</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Name</span>
-                  <span className="font-medium">{details.name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Email</span>
-                  <span className="font-medium">{details.email}</span>
-                </div>
-                {details.phone && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Phone</span>
-                    <span className="font-medium">{details.phone}</span>
-                  </div>
-                )}
-              </div>
+            <div className="px-5 py-4 bg-gray-50/60 border-t border-gray-100 space-y-2 text-sm">
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Your Info</p>
+              <div className="flex justify-between"><span className="text-gray-500">Name</span><span className="font-medium">{details.name}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Email</span><span className="font-medium">{details.email}</span></div>
+              {details.phone && (
+                <div className="flex justify-between"><span className="text-gray-500">Phone</span><span className="font-medium">{details.phone}</span></div>
+              )}
             </div>
 
             {barber.deposit_required && selectedService.deposit_value > 0 && (
-              <div className="p-4 bg-amber-50">
-                <p className="text-sm text-amber-800">
-                  <strong>Deposit required: </strong>
-                  {selectedService.deposit_type === 'fixed'
-                    ? `$${Number(selectedService.deposit_value).toFixed(2)}`
-                    : `${selectedService.deposit_value}% of total`}
-                </p>
-                <p className="text-xs text-amber-600 mt-1">You&apos;ll be redirected to a secure payment page.</p>
+              <div
+                className="px-5 py-4 flex items-start gap-3 border-t border-amber-100"
+                style={{ background: 'rgba(251,191,36,0.08)' }}
+              >
+                <span className="text-lg">💳</span>
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">
+                    Deposit required:{' '}
+                    {selectedService.deposit_type === 'fixed'
+                      ? `$${Number(selectedService.deposit_value).toFixed(2)}`
+                      : `${selectedService.deposit_value}% of total`}
+                  </p>
+                  <p className="text-xs text-amber-600 mt-0.5">You&apos;ll be redirected to a secure payment page.</p>
+                </div>
               </div>
             )}
           </div>
 
           {barber.cancellation_policy && (
-            <p className="text-xs text-gray-500 bg-gray-50 rounded-xl p-3">
-              <strong>Cancellation Policy:</strong> {barber.cancellation_policy}
-            </p>
+            <div className="glass-card rounded-xl px-4 py-3 border-l-4" style={{ borderLeftColor: '#f59e0b' }}>
+              <p className="text-xs text-amber-800">
+                <strong>Cancellation Policy:</strong> {barber.cancellation_policy}
+              </p>
+            </div>
           )}
 
           {submitError && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
-              {submitError}
+            <div className="glass-card rounded-xl p-4 border-l-4 border-red-400">
+              <p className="text-sm text-red-700">{submitError}</p>
             </div>
           )}
 
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="w-full py-3.5 rounded-xl font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-70"
-            style={{ backgroundColor: brandColor }}
+            className="w-full py-4 rounded-2xl font-semibold text-white flex items-center justify-center gap-2 transition-all disabled:opacity-70 hover:opacity-90 active:scale-[0.99] shadow-brand-lg text-base"
+            style={{ background: `linear-gradient(135deg, ${brandColor}, ${brandColor}cc)` }}
           >
             {submitting ? (
               <>
-                <svg className="animate-spin w-4 h-4 text-white" fill="none" viewBox="0 0 24 24">
+                <svg className="animate-spin w-5 h-5 text-white" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
@@ -433,8 +447,8 @@ export default function BookPage() {
               </>
             ) : (
               barber.deposit_required && selectedService.deposit_value > 0
-                ? 'Pay Deposit & Confirm'
-                : 'Confirm Booking'
+                ? '💳 Pay Deposit & Confirm'
+                : '✓ Confirm Booking'
             )}
           </button>
 
